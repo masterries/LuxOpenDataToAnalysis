@@ -1,0 +1,17 @@
+{
+    "base_download_folder": "download",
+    "sites": [
+      {
+        "name": "Luxembourg Logements Rent",
+        "url": "https://data.public.lu/fr/datasets/loyers-annonces-des-logements-par-commune/",
+        "link_pattern": "data.public.lu/fr/datasets/r/",
+        "subfolder": "luxembourg_logements_rent"
+      },
+      {
+        "name": "Luxembourg Logements Price",
+        "url": "https://data.public.lu/fr/datasets/prix-annonces-des-logements-par-commune/",
+        "link_pattern": "data.public.lu/fr/datasets/r/",
+        "subfolder": "luxembourg_logements_price"
+      }
+    ]
+  }

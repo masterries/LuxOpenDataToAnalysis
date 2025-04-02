@@ -23,10 +23,10 @@ def ensure_numeric(value):
             return 0.0
     return float(value) if value is not None else 0.0
 
-# Function to download the database
+# Download database function - returns the path, not the connection
 @st.cache_resource
 def download_database(url):
-    """Download the database from the URL and return a connection"""
+    """Download the database from the URL and return the path to it"""
     try:
         with st.spinner("Downloading database from GitHub..."):
             # Create a temporary file
@@ -42,9 +42,7 @@ def download_database(url):
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
             
-            # Connect to the database
-            conn = sqlite3.connect(temp_db_path)
-            return conn
+            return temp_db_path
     except Exception as e:
         st.error(f"Error downloading database: {e}")
         return None
@@ -52,12 +50,15 @@ def download_database(url):
 # Database URL
 db_url = "https://github.com/masterries/LuxOpenDataToAnalysis/raw/refs/heads/main/DataGathering/luxembourg_housing.db"
 
-# Download database and create connection
-conn = download_database(db_url)
+# Download database and get the path
+db_path = download_database(db_url)
 
-if conn is None:
-    st.error("Failed to download and connect to the database.")
+if db_path is None:
+    st.error("Failed to download the database.")
     st.stop()
+
+# Create a connection - now we'll keep this open until needed
+conn = sqlite3.connect(db_path)
 
 # Get all data
 def get_all_data():
@@ -271,17 +272,5 @@ st.markdown("""
 **Data Source**: [Luxembourg Open Data Portal](https://data.public.lu/) | **DB URL**: [GitHub Repository](https://github.com/masterries/LuxOpenDataToAnalysis)
 """)
 
-# Close connection
+# Close connection at the very end of the script
 conn.close()
-
-# Cleanup temp file - note this will happen at the end of the session
-def cleanup_temp_file():
-    try:
-        if 'temp_db_file' in locals() and os.path.exists(temp_db_file.name):
-            os.unlink(temp_db_file.name)
-    except:
-        pass
-
-# Register cleanup handler
-import atexit
-atexit.register(cleanup_temp_file)

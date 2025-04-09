@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 import sqlite3
 import os
 import requests
@@ -269,8 +271,148 @@ fig.update_layout(
     annotations=text_annotations
 )
 
-# Display the chart
+# Display the heatmap chart
 st.plotly_chart(fig, use_container_width=True)
+
+# Add simple price trend graphs below the heatmap
+st.header("General Price Trends Over Time")
+
+# Prepare data for the simple graphs
+def prepare_price_trends_data(df, price_column):
+    """Prepare data for simple price trend graphs"""
+    # Group by year and transaction type
+    yearly_data = df.groupby(['year', 'transaction_type']).agg({
+        price_column: 'mean',
+        'num_listings': 'sum'
+    }).reset_index()
+    
+    # Create separate dataframes for sale and rent
+    sales_data = yearly_data[yearly_data['transaction_type'] == 'sale']
+    rental_data = yearly_data[yearly_data['transaction_type'] == 'rent']
+    
+    return sales_data, rental_data
+
+# Determine which price column to use based on user selection
+price_column = 'avg_price_sqm' if use_price_sqm else 'avg_price'
+
+# Get the sales and rental price trends
+sales_data, rental_data = prepare_price_trends_data(filtered_data, price_column)
+
+# Create two columns for the graphs
+col1, col2 = st.columns(2)
+
+with col1:
+    st.subheader(f"Average Sale Price Trend ({price_unit})")
+    
+    # Simple line chart for sales
+    fig_sales = px.line(
+        sales_data, 
+        x='year', 
+        y=price_column,
+        markers=True,
+        title=f'Average Sale Price for {selected_property_type.capitalize()}s'
+    )
+    
+    fig_sales.update_layout(
+        xaxis_title='Year',
+        yaxis_title=f'Average Sale Price ({price_unit})',
+        yaxis=dict(rangemode='tozero')
+    )
+    
+    st.plotly_chart(fig_sales, use_container_width=True)
+    
+    # Display some key statistics
+    if not sales_data.empty:
+        latest_year = sales_data['year'].max()
+        latest_price = sales_data[sales_data['year'] == latest_year][price_column].iloc[0]
+        earliest_year = sales_data['year'].min()
+        earliest_price = sales_data[sales_data['year'] == earliest_year][price_column].iloc[0]
+        
+        if earliest_price > 0:
+            percent_change = ((latest_price - earliest_price) / earliest_price) * 100
+            st.metric(
+                f"Price Change ({earliest_year} to {latest_year})", 
+                f"{percent_change:.1f}%",
+                f"{latest_price - earliest_price:.1f} {price_unit}"
+            )
+
+with col2:
+    st.subheader(f"Average Rent Price Trend ({price_unit})")
+    
+    # Simple line chart for rentals
+    fig_rentals = px.line(
+        rental_data, 
+        x='year', 
+        y=price_column,
+        markers=True,
+        title=f'Average Rent Price for {selected_property_type.capitalize()}s'
+    )
+    
+    fig_rentals.update_layout(
+        xaxis_title='Year',
+        yaxis_title=f'Average Rent Price ({price_unit})',
+        yaxis=dict(rangemode='tozero')
+    )
+    
+    st.plotly_chart(fig_rentals, use_container_width=True)
+    
+    # Display some key statistics
+    if not rental_data.empty:
+        latest_year = rental_data['year'].max()
+        latest_price = rental_data[rental_data['year'] == latest_year][price_column].iloc[0]
+        earliest_year = rental_data['year'].min()
+        earliest_price = rental_data[rental_data['year'] == earliest_year][price_column].iloc[0]
+        
+        if earliest_price > 0:
+            percent_change = ((latest_price - earliest_price) / earliest_price) * 100
+            st.metric(
+                f"Price Change ({earliest_year} to {latest_year})", 
+                f"{percent_change:.1f}%",
+                f"{latest_price - earliest_price:.1f} {price_unit}"
+            )
+
+# Compare sale and rent prices in a single chart
+st.subheader(f"Sale Price vs. Rent Price Comparison ({price_unit})")
+
+# Create a DataFrame with both sale and rent data
+comparison_df = pd.DataFrame({
+    'Year': sales_data['year'],
+    'Sale Price': sales_data[price_column],
+    'Monthly Rent': rental_data[price_column] if not rental_data.empty else 0
+})
+
+# Create the comparison chart
+fig_comparison = go.Figure()
+
+# Add sale price line
+fig_comparison.add_trace(
+    go.Scatter(
+        x=comparison_df['Year'],
+        y=comparison_df['Sale Price'],
+        mode='lines+markers',
+        name=f'Sale Price ({price_unit})'
+    )
+)
+
+# Add rent price line (monthly)
+fig_comparison.add_trace(
+    go.Scatter(
+        x=comparison_df['Year'],
+        y=comparison_df['Monthly Rent'],
+        mode='lines+markers',
+        name=f'Monthly Rent ({price_unit})'
+    )
+)
+
+# Update layout
+fig_comparison.update_layout(
+    title=f'Sale Price vs. Monthly Rent for {selected_property_type.capitalize()}s',
+    xaxis_title='Year',
+    yaxis_title=f'Price ({price_unit})',
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+)
+
+st.plotly_chart(fig_comparison, use_container_width=True)
 
 # Add explanation
 st.markdown(f"""
@@ -281,14 +423,21 @@ The Price-to-Rent ratio is calculated by dividing the average property sale pric
 **Current Metric:** {price_metric}
 
 **Interpretation:**
-- **Green (20 or below)**: Good investment potential
+- **Green (20 or below)**: Good investment potential - buying is more favorable than renting
 - **Yellow (around 40)**: Moderate investment potential 
-- **Red (60 or above)**: Poor investment potential
+- **Red (60 or above)**: Poor investment potential - renting is more favorable than buying
 
 ### Hover over a cell to see:
 - Average Sale Price ({price_unit})
 - Annual Rent ({price_unit}, Monthly rent × 12)
 - Number of listings in each category
+
+### Additional Visualizations
+
+Use the tabs above to explore:
+1. **Time Series Trends** - See how the price-to-rent ratio has changed over time
+2. **Municipality Comparison** - Compare different municipalities side by side
+3. **Distribution Analysis** - Analyze the statistical distribution of ratios
 """)
 
 # Add footer with data source

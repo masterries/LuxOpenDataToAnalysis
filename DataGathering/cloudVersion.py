@@ -88,25 +88,41 @@ def get_all_data():
 # Get all data
 all_data = get_all_data()
 
-# Get list of property types
-property_types = all_data['property_type'].unique().tolist()
+# Sidebar for configuration options
+st.sidebar.header("Configuration")
 
 # Property type selector
-selected_property_type = st.selectbox(
+property_types = all_data['property_type'].unique().tolist()
+selected_property_type = st.sidebar.selectbox(
     "Select Property Type",
     options=property_types,
     index=property_types.index("apartment") if "apartment" in property_types else 0
+)
+
+# Price metric selector - let the user choose between total price and price per square meter
+price_metric = st.sidebar.radio(
+    "Price Metric",
+    ["Average Price", "Price per Square Meter"],
+    index=1  # Default to price per square meter
 )
 
 # Filter data by selected property type
 filtered_data = all_data[all_data['property_type'] == selected_property_type]
 
 # Function to calculate price-to-rent ratio
-def calculate_price_to_rent_ratios(df):
-    """Calculate price-to-rent ratio for each municipality and year"""
+def calculate_price_to_rent_ratios(df, use_price_sqm=True):
+    """Calculate price-to-rent ratio for each municipality and year
+    
+    Args:
+        df: DataFrame with housing data
+        use_price_sqm: If True, use avg_price_sqm, otherwise use avg_price
+    """
+    # Select the price column based on user choice
+    price_column = 'avg_price_sqm' if use_price_sqm else 'avg_price'
+    
     # Group by municipality, year, and transaction type, taking the mean of prices
     df_grouped = df.groupby(['municipality', 'year', 'transaction_type']).agg({
-        'avg_price': 'mean',
+        price_column: 'mean',
         'num_listings': 'sum'
     }).reset_index()
     
@@ -122,9 +138,9 @@ def calculate_price_to_rent_ratios(df):
         rental_data = year_data[year_data['transaction_type'] == 'rent']
         
         # Create dictionaries for quick lookup
-        sale_prices = {row['municipality']: row['avg_price'] for _, row in sales_data.iterrows()}
+        sale_prices = {row['municipality']: row[price_column] for _, row in sales_data.iterrows()}
         sale_listings = {row['municipality']: row['num_listings'] for _, row in sales_data.iterrows()}
-        rent_prices = {row['municipality']: row['avg_price'] for _, row in rental_data.iterrows()}
+        rent_prices = {row['municipality']: row[price_column] for _, row in rental_data.iterrows()}
         rent_listings = {row['municipality']: row['num_listings'] for _, row in rental_data.iterrows()}
         
         # Calculate price-to-rent ratio for municipalities with both sales and rental data
@@ -151,8 +167,11 @@ def calculate_price_to_rent_ratios(df):
     
     return ptr_data
 
-# Calculate price-to-rent ratios
-ptr_data = calculate_price_to_rent_ratios(filtered_data)
+# Determine whether to use price per square meter based on user selection
+use_price_sqm = (price_metric == "Price per Square Meter")
+
+# Calculate price-to-rent ratios based on selected metric
+ptr_data = calculate_price_to_rent_ratios(filtered_data, use_price_sqm)
 
 # Convert to DataFrame for heatmap
 years = sorted(filtered_data['year'].unique())
@@ -161,6 +180,9 @@ municipalities = sorted(ptr_data.keys())
 # Create DataFrames for the heatmap values and hover information
 ratio_matrix = []
 hover_texts = []
+
+# Prepare price unit text based on the selected metric
+price_unit = "€/m²" if use_price_sqm else "€"
 
 for municipality in municipalities:
     ratio_row = []
@@ -177,8 +199,8 @@ for municipality in municipalities:
                 f"Municipality: {municipality}<br>"
                 f"Year: {year}<br>"
                 f"Price-to-Rent Ratio: {ratio:.1f}<br>"
-                f"Average Sale Price: €{data['sale_price']:,.0f}<br>"
-                f"Annual Rent: €{data['annual_rent']:,.0f}<br>"
+                f"Average Sale Price: {price_unit}{data['sale_price']:,.0f}<br>"
+                f"Annual Rent: {price_unit}{data['annual_rent']:,.0f}<br>"
                 f"Sale Listings: {data['sale_listings']}<br>"
                 f"Rent Listings: {data['rent_listings']}"
             )
@@ -235,9 +257,10 @@ heatmap = go.Heatmap(
 
 fig.add_trace(heatmap)
 
-# Update layout
+# Update layout with appropriate title based on the selected metric
+metric_description = "per Square Meter" if use_price_sqm else "Total"
 fig.update_layout(
-    title=f'Price-to-Rent Ratio Heatmap for {selected_property_type.capitalize()}s',
+    title=f'Price-to-Rent Ratio Heatmap for {selected_property_type.capitalize()}s ({metric_description})',
     xaxis_title='Year',
     yaxis_title='Municipality',
     height=max(600, len(municipalities) * 20),  # Adjust height based on number of municipalities
@@ -250,10 +273,12 @@ fig.update_layout(
 st.plotly_chart(fig, use_container_width=True)
 
 # Add explanation
-st.markdown("""
+st.markdown(f"""
 ### Understanding the Price-to-Rent Ratio
 
-The Price-to-Rent ratio is calculated by dividing the average property sale price by the annual rental income.
+The Price-to-Rent ratio is calculated by dividing the average property sale price {price_unit} by the annual rental income {price_unit}.
+
+**Current Metric:** {price_metric}
 
 **Interpretation:**
 - **Green (20 or below)**: Good investment potential
@@ -261,8 +286,8 @@ The Price-to-Rent ratio is calculated by dividing the average property sale pric
 - **Red (60 or above)**: Poor investment potential
 
 ### Hover over a cell to see:
-- Average Sale Price
-- Annual Rent (Monthly rent × 12)
+- Average Sale Price ({price_unit})
+- Annual Rent ({price_unit}, Monthly rent × 12)
 - Number of listings in each category
 """)
 
